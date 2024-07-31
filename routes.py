@@ -9,66 +9,59 @@ actions_bp = Blueprint('actions', __name__)
 action_controller = ActionController()
 
 class InvalidUsage(Exception):
-    status_code = 400
-
-    def __init__(self, message, status_code=None, payload=None):
-        Exception.__init__(self)
+    def __init__(self, message, status_code=400, payload=None):
+        super().__init__(message)
         self.message = message
-        if status_code is not None:
-            self.status_code = status_code
-        self.payload = payload
+        self.status_code = status_code
+        self.payload = payload or {}
 
     def to_dict(self):
-        rv = dict(self.payload or ())
-        rv['message'] = self.message
-        return rv
-
+        return {'message': self.message, **self.payload}
 
 @actions_bp.errorhandler(InvalidUsage)
 def handle_invalid_usage(error):
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
+    return jsonify(error.to_dict()), error.status_code
+
+def process_action_request(action_id=None, method=None):
+    try:
+        data = request.json if request.json is not None else {}
+        if method == 'create':
+            return jsonify(action_controller.create_action(data)), 201
+        elif method == 'update':
+            return jsonify(action_controller.update_action(action_id, data))
+        elif method == 'delete':
+            return jsonify(action_controller.delete_action(action_id))
+        elif method == 'get':
+            return jsonify(action_controller.get_action(action_id))
+    except KeyError:
+        raise InvalidUsage('Action not found', status_code=404)
+    except Exception as e:
+        if method in ['create', 'update']:
+            status_code = 400
+        else:
+            status_code = 500
+        raise InvalidUsage(f"Error {method}ing action: {str(e)}", status_code=status_code)
 
 @actions_bp.route('/actions', methods=['POST'])
 def create_action():
-    data = request.json
-    try:
-        return action_controller.create_action(data), 201
-    except Exception as e:
-        raise InvalidUsage(f"Error creating action: {str(e)}", status_code=400)
+    return process_action_request(method='create')
 
 @actions_bp.route('/actions/<action_id>', methods=['PUT'])
 def update_action(action_id):
-    data = request.json
-    try:
-        return action_controller.update_action(action_id, data)
-    except KeyError:
-        raise InvalidUsage('Action not found', status_code=404)
-    except Exception as e:
-        raise InvalidUsage(f"Error updating action: {str(e)}", status_code=400)
+    return process_action_request(action_id=action_id, method='update')
 
 @actions_bp.route('/actions/<action_id>', methods=['DELETE'])
 def delete_action(action_id):
-    try:
-        return action_controller.delete_action(action_id)
-    except KeyError:
-        raise InvalidUsage('Action not found', status_code=404)
-    except Exception as e:
-        raise InvalidUsage(f"Error deleting action: {str(e)}", status_code=400)
+    return process_action_request(action_id=action_id, method='delete')
 
 @actions_bp.route('/actions/<action_id>', methods=['GET'])
 def get_action(action_id):
-    try:
-        return action_controller.get_action(action_id)
-    except KeyError:
-        raise InvalidUsage('Action not found', status_code=404)
-    except Exception as e:
-        raise InvalidUsage(f"Error retrieving action: {str(e)}", status_code=400)
+    return process_action_request(action_id=action_id, method='get')
 
 @actions_bp.route('/actions', methods=['GET'])
 def list_actions():
     try:
-        return action_controller.list_actions()
+        actions_list = action_controller.list_actions()
+        return jsonify(actions_list)
     except Exception as e:
         raise InvalidUsage(f"Error listing actions: {str(e)}", status_code=500)
