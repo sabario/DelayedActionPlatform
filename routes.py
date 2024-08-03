@@ -2,13 +2,13 @@ from flask import Blueprint, request, jsonify, make_response
 import os
 from your_action_controller import ActionController
 
-FLASK_PORT = os.getenv('FLASK_PORT', 5000)
+SERVER_PORT = os.getenv('FLASK_PORT', 5000)
 
-actions_bp = Blueprint('actions', __name__)
+action_blueprint = Blueprint('actions_endpoint', __name__)
 
-action_controller = ActionController()
+action_manager = ActionController()
 
-class InvalidUsage(Exception):
+class APIUsageError(Exception):
     def __init__(self, message, status_code=400, payload=None):
         super().__init__(message)
         self.message = message
@@ -18,50 +18,56 @@ class InvalidUsage(Exception):
     def to_dict(self):
         return {'message': self.message, **self.payload}
 
-@actions_bp.errorhandler(InvalidUsage)
-def handle_invalid_usage(error):
-    return jsonify(error.to_dict()), error.status_code
+@action_blueprint.errorhandler(APIUsageError)
+def handle_api_usage_error(error):
+    response = jsonify(error.to_dict())
+    response.status_code = error.status_code
+    return response
 
-def process_action_request(action_id=None, method=None):
+def execute_action_based_on_method(action_id=None, operation=None):
     try:
-        data = request.json if request.json is not None else {}
-        if method == 'create':
-            return jsonify(action_controller.create_action(data)), 201
-        elif method == 'update':
-            return jsonify(action_controller.update_action(action_id, data))
-        elif method == 'delete':
-            return jsonify(action_controller.delete_action(action_id))
-        elif method == 'get':
-            return jsonify(action_controller.get_action(action_id))
+        action_data = request.json if request.json is not None else {}
+        if operation == 'create':
+            created_action = action_manager.create_action(action_data)
+            return jsonify(created_action), 201
+        elif operation == 'update':
+            updated_action = action_manager.update_action(action_id, action_data)
+            return jsonify(updated_action)
+        elif operation == 'delete':
+           deleted_status = action_manager.delete_action(action_id)
+           return jsonify(deleted_status)
+        elif operation == 'get':
+            action_details = action_manager.get_action(action_id)
+            return jsonify(action_details)
     except KeyError:
-        raise InvalidUsage('Action not found', status_code=404)
-    except Exception as e:
-        if method in ['create', 'update']:
-            status_code = 400
+        raise APIUsageError('Action not found', status_code=404)
+    except Exception as exc:
+        if operation in ['create', 'update']:
+            error_status_code = 400
         else:
-            status_code = 500
-        raise InvalidUsage(f"Error {method}ing action: {str(e)}", status_code=status_code)
+            error_status_code = 500
+        raise APIUsageError(f"Error processing action ({operation}): {str(exc)}", status_code=error_status_code)
 
-@actions_bp.route('/actions', methods=['POST'])
-def create_action():
-    return process_action_request(method='create')
+@action_blueprint.route('/actions', methods=['POST'])
+def create_action_endpoint():
+    return execute_action_based_on_method(operation='create')
 
-@actions_bp.route('/actions/<action_id>', methods=['PUT'])
-def update_action(action_id):
-    return process_action_request(action_id=action_id, method='update')
+@action_blueprint.route('/actions/<action_id>', methods=['PUT'])
+def update_action_endpoint(action_id):
+    return execute_action_based_on_method(action_id=action_id, operation='update')
 
-@actions_bp.route('/actions/<action_id>', methods=['DELETE'])
-def delete_action(action_id):
-    return process_action_request(action_id=action_id, method='delete')
+@action_blueprint.route('/actions/<action_id>', methods=['DELETE'])
+def delete_action_endpoint(action_id):
+    return execute_action_based_on_method(action_id=action_id, operation='delete')
 
-@actions_bp.route('/actions/<action_id>', methods=['GET'])
-def get_action(action_id):
-    return process_action_request(action_id=action_id, method='get')
+@action_blueprint.route('/actions/<action_id>', methods=['GET'])
+def get_action_endpoint(action_id):
+    return execute_action_based_on_method(action_id=action_id, operation='get')
 
-@actions_bp.route('/actions', methods=['GET'])
-def list_actions():
+@action_blueprint.route('/actions', methods=['GET'])
+def list_all_actions_endpoint():
     try:
-        actions_list = action_controller.list_actions()
-        return jsonify(actions_list)
-    except Exception as e:
-        raise InvalidUsage(f"Error listing actions: {str(e)}", status_code=500)
+        all_actions = action_manager.list_actions()
+        return jsonify(all_actions)
+    except Exception as exc:
+        raise APIUsageError(f"Error retrieving list of actions: {str(exc)}", status_code=500)
