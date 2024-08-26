@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError  # Import SQLAlchemy exceptions
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker, relationship
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,20 +29,37 @@ try:
 
 except SQLAlchemyError as e:
     print(f"Error initializing database: {e}")
-    # Depending on requirements, here you might raise an error or exit
+    # Depending on requirements, you might raise an error or exit
+
+
+def add_action(session, description, execute_at, status, user_id):
+    """
+    Adds a new action into the database.
+
+    Args:
+        session: Database session.
+        description (str): Description of the action.
+        execute_at (DateTime): The time at which the action should be executed.
+        status (str): Status of the action.
+        user_id (int): ID of the user associated with the action.
+    """
+    try:
+        new_action = Action(description=description, execute_at=execute_at, status=status, user_id=user_id)
+        session.add(new_action)
+        session.commit()
+        print("Action added successfully.")
+    except SQLAlchemyError as e:
+        print(f"Error adding action: {e}")
+        session.rollback()
+
 
 def main():
     session = Session()
     try:
-        # Here you would include database operations
-        # Example: 
-        # new_action = Action(description='Test', execute_at=datetime.now(), status='pending', user_id=1)
-        # session.add(new_action)
-        # session.commit()
-        print("Main function placeholder")
+        # Demonstration of adding an action
+        add_action(session, 'Test Action', datetime.now(), 'pending', 1)
     except SQLAlchemyError as e:
         print(f"Database operation failed: {e}")
-        session.rollback()  # Roll back the changes if any error occurs
     finally:
         session.close()
 
