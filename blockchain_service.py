@@ -48,52 +48,42 @@ contract_id, contract_interface = compiled_sol.popitem()
 abi = contract_interface['abi']
 bytecode = contract_interface['bin']
 
-def deploy_contract():
+def prepare_and_send_transaction(contract_function, *args, **kwargs):
     account = w3.eth.account.privateKeyToAccount(private_key)
-    w3.eth.defaultAccount = account.address
+    contract = w3.eth.contract(address=kwargs.get("contract_address", None), abi=abi)
+    function_call = getattr(contract.functions, contract_function)(*args)
     
-    DelayedAction = w3.eth.contract(abi=abi, bytecode=bytecode)
-    construct_txn = DelayedAction.constructor().buildTransaction({
+    transaction = function_call.buildTransaction({
         'from': account.address,
         'nonce': w3.eth.getTransactionCount(account.address),
-        'gas': 4000000,
+        'gas': 400000,
         'gasPrice': w3.toWei('20', 'gwei')
     })
-
-    signed_txn = account.sign_transaction(construct_txn)
-
+    
+    signed_txn = account.sign_transaction(transaction)
     tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
-
-    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-
-    return tx_receipt.contractAddress
+    return w3.eth.waitForTransactionReceipt(tx_hash)
+    
+def deploy_contract():
+    contract = w3.eth.contract(abi=abi, bytecode=bytecode)
+    transaction_receipt = prepare_and_send_transaction('constructor')
+    
+    return transaction_receipt.contractAddress
 
 def schedule_action(contract_address, due_time):
-    account = w3.eth.account.privateKeyToAccount(private_key)
-    contract = w3.eth.contract(address=contract_address, abi=abi)
-    
-    transaction = contract.functions.scheduleAction(due_time).buildTransaction({
-        'from': account.address,
-        'nonce': w3.eth.getTransactionCount(account.address),
-        'gas': 400000,
-        'gasPrice': w3.toWei('20', 'gwei')
-    })
-    
-    signed_txn = account.sign_transaction(transaction)
-    tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
-    return w3.eth.waitForTransactionReceipt(tx_hash)
+    return prepare_and_send_transaction('scheduleAction', due_time, contract_address=contract_address)
 
 def execute_action(contract_address, action_id):
-    account = w3.eth.account.privateKeyToAccount(private_key)
-    contract = w3.eth.contract(address=contract_address, abi=abi)
+    return prepare_and_send_transaction('executeAction', action_id, contract_address=contract_address)
+
+if __name__ == "__main__":
+    contract_address = deploy_contract()
+    print(f"Contract deployed at address: {contract_address}")
     
-    transaction = contract.functions.executeAction(action_id).buildTransaction({
-        'from': account.address,
-        'nonce': w3.eth.getTransactionCount(account.address),
-        'gas': 400000,
-        'gasPrice': w3.toWei('20', 'gwei')
-    })
+    due_time = 1672531200
+    schedule_receipt = schedule_action(contract_address, due_time)
+    print(f"Action scheduled with transaction receipt: {schedule_receipt.transactionHash.hex()}")
     
-    signed_txn = account.sign_transaction(transaction)
-    tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
-    return w3.eth.waitForTransactionReceipt(tx_hash)
+    action_id = 0
+    execute_receipt = execute_action(contract_address, action_id)
+    print(f"Action executed with transaction receipt: {execute_receipt.transactionHash.hex()}")
