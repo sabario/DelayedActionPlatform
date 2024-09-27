@@ -1,3 +1,43 @@
+pragma solidity ^0.8.0;
+
+contract DelayedAction {
+    event ActionScheduled(uint256 actionId, address scheduledBy, uint256 dueTime);
+    event ActionExecuted(uint256 actionId, address executedBy);
+    event ActionCancelled(uint256 actionId, address cancelledBy);
+
+    struct Action {
+        uint256 id;
+        address scheduledBy;
+        uint256 dueTime;
+        bool isCancelled;
+    }
+
+    uint256 public nextActionId;
+    mapping(uint256 => Action) public actions;
+
+    function scheduleAction(uint256 dueTime) external returns (uint256) {
+        uint256 actionId = nextActionId++;
+        actions[actionId] = Action(actionId, msg.sender, dueTime, false);
+        emit ActionScheduled(actionId, msg.sender, dueTime);
+        return actionId;
+    }
+
+    function executeAction(uint256 actionId) external {
+        require(block.timestamp >= actions[actionId].dueTime, "Action not due yet");
+        require(!actions[actionId].isCancelled, "Action has been cancelled");
+        emit ActionExecuted(actionId, msg.sender);
+    }
+
+    function cancelAction(uint256 actionId) external {
+        require(msg.sender == actions[actionId].scheduledBy, "Only the creator can cancel");
+        require(!actions[actionId].isCancelled, "Action already cancelled");
+        actions[actionId].isCancelled = true;
+        emit ActionCancelled(actionId, msg.sender);
+    }
+}
+```
+
+```python
 from web3 import Web3
 from solcx import compile_source
 from web3.middleware import geth_poa_middleware
@@ -9,37 +49,10 @@ account_address = os.getenv('ACCOUNT_ADDRESS')
 
 w3 = Web3(Web3.HTTPProvider(infura_url))
 w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-
 assert w3.isConnected(), "Failed to connect to Ethereum node."
 
 contract_source_code = '''
-pragma solidity ^0.8.0;
-
-contract DelayedAction {
-    event ActionScheduled(uint256 actionId, address scheduledBy, uint256 dueTime);
-    event ActionExecuted(uint256 actionId, address executedBy);
-
-    struct Action {
-        uint256 id;
-        address scheduledBy;
-        uint256 dueTime;
-    }
-
-    uint256 public nextActionId;
-    mapping(uint256 => Action) public actions;
-
-    function scheduleAction(uint256 dueTime) external returns (uint256) {
-        uint256 actionId = nextActionId++;
-        actions[actionId] = Action(actionId, msg.sender, dueTime);
-        emit ActionScheduled(actionId, msg.sender, dueTime);
-        return actionId;
-    }
-
-    function executeAction(uint256 actionId) external {
-        require(block.timestamp >= actions[actionId].dueTime, "Action not due yet");
-        emit ActionExecuted(actionId, msg.sender);
-    }
-}
+/* Solidity code from above */
 '''
 
 compiled_sol = compile_source(contract_source_code, output_values=["abi", "bin"])
@@ -65,9 +78,7 @@ def prepare_and_send_transaction(contract_function, *args, **kwargs):
     return w3.eth.waitForTransactionReceipt(tx_hash)
     
 def deploy_contract():
-    contract = w3.eth.contract(abi=abi, bytecode=bytecode)
     transaction_receipt = prepare_and_send_transaction('constructor')
-    
     return transaction_receipt.contractAddress
 
 def schedule_action(contract_address, due_time):
@@ -76,14 +87,18 @@ def schedule_action(contract_address, due_time):
 def execute_action(contract_address, action_id):
     return prepare_and_send_transaction('executeAction', action_id, contract_address=contract_address)
 
+def cancel_action(contract_address, action_id):
+    return prepare_and_send_transaction('cancelAction', action_id, contract_address=contract_address)
+
 if __name__ == "__main__":
     contract_address = deploy_contract()
     print(f"Contract deployed at address: {contract_address}")
     
     due_time = 1672531200
-    schedule_receipt = schedule_action(contract_address, due_time)
-    print(f"Action scheduled with transaction receipt: {schedule_receipt.transactionHash.hex()}")
     
-    action_id = 0
-    execute_receipt = execute_action(contract_address, action_id)
-    print(f"Action executed with transaction receipt: {execute_receipt.transactionHash.hex()}")
+    action_id = schedule_action(contract_address, due_time)["logs"][0]["topics"][1]
+    print(f"Action scheduled with id: {int(action_id.hex(), 16)}")
+    
+    cancel_receipt = cancel_action(contract_address, int(action_id.hex(), 16))
+    print(f"Action cancelled with transaction receipt: {cancel_receipt.transactionHash.hex()}")
+```
