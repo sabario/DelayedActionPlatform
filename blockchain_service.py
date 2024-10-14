@@ -52,7 +52,7 @@ w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 assert w3.isConnected(), "Failed to connect to Ethereum node."
 
 contract_source_code = '''
-/* Solidity code from above */
+/* Solidity code block */
 '''
 
 compiled_sol = compile_source(contract_source_code, output_values=["abi", "bin"])
@@ -63,7 +63,7 @@ bytecode = contract_interface['bin']
 
 def prepare_and_send_transaction(contract_function, *args, **kwargs):
     account = w3.eth.account.privateKeyToAccount(private_key)
-    contract = w3.eth.contract(address=kwargs.get("contract_address", None), abi=abi)
+    contract = w3.eth.contract(address=kwargs.get("contract_address"), abi=abi)
     function_call = getattr(contract.functions, contract_function)(*args)
     
     transaction = function_call.buildTransaction({
@@ -78,7 +78,7 @@ def prepare_and_send_transaction(contract_function, *args, **kwargs):
     return w3.eth.waitForTransactionReceipt(tx_hash)
     
 def deploy_contract():
-    transaction_receipt = prepare_and_send_transaction('constructor')
+    transaction_receipt = prepare_and_send_transaction('constructor', contract_address=None)
     return transaction_receipt.contractAddress
 
 def schedule_action(contract_address, due_time):
@@ -96,9 +96,9 @@ if __name__ == "__main__":
     
     due_time = 1672531200
     
-    action_id = schedule_action(contract_address, due_time)["logs"][0]["topics"][1]
+    schedule_receipt = schedule_action(contract_address, due_time)
+    action_id = schedule_receipt.logs[0]['topics'][1]
     print(f"Action scheduled with id: {int(action_id.hex(), 16)}")
     
     cancel_receipt = cancel_action(contract_address, int(action_id.hex(), 16))
     print(f"Action cancelled with transaction receipt: {cancel_receipt.transactionHash.hex()}")
-```
