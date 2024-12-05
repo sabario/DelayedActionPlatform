@@ -1,11 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import SQLAlchemyError  # Import SQLAlchemy exceptions
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import scoped_session
 from dotenv import load_dotenv
 import os
-import logging  # Import logging library
+import logging
 
-# Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
-Session = sessionmaker(bind=engine)
+Session = scoped_session(sessionmaker(bind=engine))
 
 def get_db_connection():
     db_session = Session()
@@ -31,9 +31,6 @@ def get_db_connection():
         logger.info("Database connection closed")
 
 def log_database_operation(func):
-    """
-    A decorator to log the database operation.
-    """
     def wrapper(*args, **kwargs):
         logger.info(f"Operation '{func.__name__}' started")
         result = func(*args, **kwargs)
@@ -41,14 +38,19 @@ def log_database_operation(func):
         return result
     return wrapper
 
-# Example usage of the new functionality
 @log_database_operation
-def example_database_operation():
-    # This function should include the actual database operation you intend to perform.
-    # For this example, it simply logs that the operation would occur here.
-    logger.info("Performing a sample database operation...")
+def example_bulk_insert_operation(session, data):
+    try:
+        logger.info("Performing a bulk insert...")
+    except Exception as e:
+        logger.error(f"An error occurred during bulk insert operation: {e}")
 
-# Remember to call your example function to see it in action
+def batch_process(func, data, batch_size=100):
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        func(batch)
+
 if __name__ == "__main__":
+    data = [...]  
     with get_db_connection() as connection:
-        example_database_operation()
+        example_bulk_insert_operation(connection, data)
